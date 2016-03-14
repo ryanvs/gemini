@@ -1,5 +1,8 @@
-﻿using System.ComponentModel.Composition;
+﻿using System.Collections.Generic;
+using System.ComponentModel.Composition;
 using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
 using Caliburn.Micro;
 using Gemini.Framework;
 using Gemini.Framework.Services;
@@ -18,18 +21,38 @@ namespace Gemini.Modules.CodeEditor
 	        _languageDefinitionManager = languageDefinitionManager;
 	    }
 
+	    public IEnumerable<EditorFileType> FileTypes
+	    {
+	        get
+	        {
+	            return _languageDefinitionManager.LanguageDefinitions
+	                .Select(languageDefinition => new EditorFileType
+	                {
+	                    Name = languageDefinition.Name + " File",
+	                    FileExtension = languageDefinition.FileExtensions.First()
+	                });
+	        }
+	    }
+
 	    public bool Handles(string path)
-		{
-			var extension = Path.GetExtension(path);
+	    {
+	        var extension = Path.GetExtension(path);
+	        return extension != null && _languageDefinitionManager.GetDefinitionByExtension(extension) != null;
+	    }
 
-            return extension != null && _languageDefinitionManager.GetDefinitionByExtension(extension) != null;
-		}
+	    public IDocument Create()
+        {
+            return IoC.Get<CodeEditorViewModel>();
+        }
 
-		public IDocument Create(string path)
-		{
-            var editor = IoC.Get<CodeEditorViewModel>();
-			editor.Open(path);
-			return editor;
-		}
+	    public async Task New(IDocument document, string name)
+        {
+            await ((CodeEditorViewModel) document).New(name);
+        }
+
+	    public async Task Open(IDocument document, string path)
+        {
+            await ((CodeEditorViewModel) document).Load(path);
+        }
 	}
 }

@@ -9,9 +9,24 @@ using Gemini.Framework.Services;
 
 namespace Gemini
 {
-	public class AppBootstrapper : Bootstrapper<IMainWindow>
-	{
-		private CompositionContainer _container;
+    using System.Windows;
+    using System.Reflection;
+
+    public class AppBootstrapper : BootstrapperBase
+    {
+        private List<Assembly> _priorityAssemblies;
+
+		protected CompositionContainer Container { get; set; }
+
+        internal IList<Assembly> PriorityAssemblies
+        {
+            get { return _priorityAssemblies; }
+        }
+
+        public AppBootstrapper()
+        {
+            this.Initialize();
+        }
 
 		/// <summary>
 		/// By default, we are configured to use MEF
@@ -27,55 +42,67 @@ namespace Gemini
 
             // Prioritise the executable assembly. This allows the client project to override exports, including IShell.
             // The client project can override SelectAssemblies to choose which assemblies are prioritised.
-		    var priorityAssemblies = SelectAssemblies().ToList();
-		    var priorityCatalog = new AggregateCatalog(priorityAssemblies.Select(x => new AssemblyCatalog(x)));
+            _priorityAssemblies = SelectAssemblies().ToList();
+		    var priorityCatalog = new AggregateCatalog(_priorityAssemblies.Select(x => new AssemblyCatalog(x)));
 		    var priorityProvider = new CatalogExportProvider(priorityCatalog);
-
+            
             // Now get all other assemblies (excluding the priority assemblies).
 			var mainCatalog = new AggregateCatalog(
                 AssemblySource.Instance
-                    .Where(assembly => !priorityAssemblies.Contains(assembly))
+                    .Where(assembly => !_priorityAssemblies.Contains(assembly))
                     .Select(x => new AssemblyCatalog(x)));
 		    var mainProvider = new CatalogExportProvider(mainCatalog);
 
-			_container = new CompositionContainer(priorityProvider, mainProvider);
-		    priorityProvider.SourceProvider = _container;
-		    mainProvider.SourceProvider = _container;
+			Container = new CompositionContainer(priorityProvider, mainProvider);
+		    priorityProvider.SourceProvider = Container;
+		    mainProvider.SourceProvider = Container;
 
 			var batch = new CompositionBatch();
 
 		    BindServices(batch);
             batch.AddExportedValue(mainCatalog);
 
-			_container.Compose(batch);
+			Container.Compose(batch);
 		}
 
 	    protected virtual void BindServices(CompositionBatch batch)
         {
             batch.AddExportedValue<IWindowManager>(new WindowManager());
             batch.AddExportedValue<IEventAggregator>(new EventAggregator());
-            batch.AddExportedValue(_container);
+            batch.AddExportedValue(Container);
+	        batch.AddExportedValue(this);
         }
 
 		protected override object GetInstance(Type serviceType, string key)
 		{
 			string contract = string.IsNullOrEmpty(key) ? AttributedModelServices.GetContractName(serviceType) : key;
-			var exports = _container.GetExportedValues<object>(contract);
+			var exports = Container.GetExports<object>(contract);
 
-			if (exports.Count() > 0)
-				return exports.First();
+			if (exports.Any())
+				return exports.First().Value;
 
 			throw new Exception(string.Format("Could not locate any instances of contract {0}.", contract));
 		}
 
 		protected override IEnumerable<object> GetAllInstances(Type serviceType)
 		{
-			return _container.GetExportedValues<object>(AttributedModelServices.GetContractName(serviceType));
+			return Container.GetExportedValues<object>(AttributedModelServices.GetContractName(serviceType));
 		}
 
 		protected override void BuildUp(object instance)
 		{
-			_container.SatisfyImportsOnce(instance);
+			Container.SatisfyImportsOnce(instance);
 		}
+
+	    protected override void OnStartup(object sender, StartupEventArgs e)
+	    {
+	        base.OnStartup(sender, e);
+            DisplayRootViewFor<IMainWindow>();
+	    }
+
+        protected override IEnumerable<Assembly> SelectAssemblies()
+        {
+            return new[] { Assembly.GetEntryAssembly() };
+        }
 	}
 }

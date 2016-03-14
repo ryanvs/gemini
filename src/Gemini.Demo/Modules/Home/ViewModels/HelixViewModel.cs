@@ -10,8 +10,10 @@ using Caliburn.Micro;
 using Gemini.Demo.Modules.Home.Views;
 using Gemini.Framework;
 using Gemini.Modules.CodeCompiler;
-using Roslyn.Compilers;
-using Roslyn.Compilers.CSharp;
+using System.IO;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
+using System.Reflection;
 
 namespace Gemini.Demo.Modules.Home.ViewModels
 {
@@ -24,7 +26,7 @@ namespace Gemini.Demo.Modules.Home.ViewModels
         private IHelixView _helixView;
 
         private Point3D _cameraPosition;
-        [DisplayName("Camera Position"), Description("Position of the camera in 3D space")]
+        [DisplayName("Camera Position"), Description("Position of the camera in 3D space"), Category("Camera")]
         public Point3D CameraPosition
         {
             get { return _cameraPosition; }
@@ -36,7 +38,7 @@ namespace Gemini.Demo.Modules.Home.ViewModels
         }
 
         private double _cameraFieldOfView;
-        [DisplayName("Field of View"), Range(1.0, 180.0)]
+        [DisplayName("Field of View"), Range(1.0, 180.0), Category("Camera")]
         public double CameraFieldOfView
         {
             get { return _cameraFieldOfView; }
@@ -60,7 +62,7 @@ namespace Gemini.Demo.Modules.Home.ViewModels
         }
 
         private double _rotationAngle;
-        [DisplayName("Rotation Angle")]
+        [DisplayName("Rotation Angle"), ReadOnly(true)]
         public double RotationAngle
         {
             get { return _rotationAngle; }
@@ -87,7 +89,7 @@ namespace Gemini.Demo.Modules.Home.ViewModels
 
         protected override void OnViewLoaded(object view)
         {
-            _helixView = (IHelixView) view;
+            _helixView = (IHelixView)view;
 
             _helixView.TextEditor.Text = @"public class MyClass : Gemini.Demo.Modules.Home.ViewModels.IDemoScript
 {
@@ -111,22 +113,28 @@ namespace Gemini.Demo.Modules.Home.ViewModels
             {
                 _scripts.Clear();
 
+                var assemblyPath = Path.GetDirectoryName(typeof(object).Assembly.Location);
                 var newAssembly = _codeCompiler.Compile(
-                    new[] { SyntaxTree.ParseText(_helixView.TextEditor.Text) },
-                    new[]
-                        {
-                            MetadataReference.CreateAssemblyReference("mscorlib"),
-                            MetadataReference.CreateAssemblyReference("System"),
-                            MetadataReference.CreateAssemblyReference("PresentationCore"),
-                            new MetadataFileReference(typeof(IResult).Assembly.Location),
-                            new MetadataFileReference(typeof(AppBootstrapper).Assembly.Location),
-                            new MetadataFileReference(GetType().Assembly.Location)
+                     new[] { CSharpSyntaxTree.ParseText(_helixView.TextEditor.Text) },
+                     new[]
+                         {
+                            MetadataReference.CreateFromFile(Path.Combine(assemblyPath, "mscorlib.dll")),
+                            MetadataReference.CreateFromFile(Path.Combine(assemblyPath, "System.dll")),
+                            MetadataReference.CreateFromFile(Path.Combine(assemblyPath, "System.Core.dll")),
+                            MetadataReference.CreateFromFile(Path.Combine(assemblyPath+ "\\WPF\\", "PresentationCore.dll")),
+                            MetadataReference.CreateFromFile(typeof(IResult).Assembly.Location),
+                            MetadataReference.CreateFromFile(typeof(AppBootstrapper).Assembly.Location),
+                            MetadataReference.CreateFromFile(typeof(object).Assembly.Location),
+                            MetadataReference.CreateFromFile(Assembly.GetEntryAssembly().Location)
                         },
                     "GeminiDemoScript");
 
-                _scripts.AddRange(newAssembly.GetTypes()
-                    .Where(x => typeof(IDemoScript).IsAssignableFrom(x))
-                    .Select(x => (IDemoScript) Activator.CreateInstance(x)));
+                if (newAssembly != null)
+                {
+                    _scripts.AddRange(newAssembly.GetTypes()
+                        .Where(x => typeof(IDemoScript).IsAssignableFrom(x))
+                        .Select(x => (IDemoScript)Activator.CreateInstance(x)));
+                }
             }
         }
 

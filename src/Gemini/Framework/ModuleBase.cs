@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.Composition;
+using System.Windows;
 using Gemini.Framework.Services;
 using Gemini.Modules.MainMenu;
 using Gemini.Modules.ToolBars;
@@ -9,16 +10,18 @@ namespace Gemini.Framework
 {
 	public abstract class ModuleBase : IModule
 	{
+#pragma warning disable 649
         [Import]
         private IMainWindow _mainWindow;
 
-	    protected IMainWindow MainWindow
+        [Import]
+        private IShell _shell;
+#pragma warning restore 649
+
+        protected IMainWindow MainWindow
 	    {
 	        get { return _mainWindow; }
 	    }
-
-		[Import]
-		private IShell _shell;
 
 		protected IShell Shell
 		{
@@ -33,6 +36,11 @@ namespace Gemini.Framework
         protected IToolBars ToolBars
         {
             get { return _shell.ToolBars; }
+        }
+
+        public virtual IEnumerable<ResourceDictionary> GlobalResourceDictionaries
+        {
+            get { yield break; }
         }
 
         public virtual IEnumerable<IDocument> DefaultDocuments

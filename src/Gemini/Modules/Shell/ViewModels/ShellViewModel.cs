@@ -7,165 +7,156 @@ using System.Windows;
 using Caliburn.Micro;
 using Gemini.Framework;
 using Gemini.Framework.Services;
+using Gemini.Framework.Themes;
 using Gemini.Modules.MainMenu;
+using Gemini.Modules.Shell.Services;
 using Gemini.Modules.Shell.Views;
 using Gemini.Modules.StatusBar;
 using Gemini.Modules.ToolBars;
 
 namespace Gemini.Modules.Shell.ViewModels
 {
-	[Export(typeof(IShell))]
-	public class ShellViewModel : Conductor<IDocument>.Collection.OneActive, IShell
-	{
+    [Export(typeof(IShell))]
+    public class ShellViewModel : Conductor<IDocument>.Collection.OneActive, IShell
+    {
         public event EventHandler ActiveDocumentChanging;
         public event EventHandler ActiveDocumentChanged;
-        public event EventHandler CurrentThemeChanged;
 
+#pragma warning disable 649
 		[ImportMany(typeof(IModule))]
 		private IEnumerable<IModule> _modules;
 
-	    private bool _closing;
+        [Import]
+	    private IThemeManager _themeManager;
 
-        private ResourceDictionary _currentTheme;
-        public ResourceDictionary CurrentTheme
-        {
-            get { return _currentTheme; }
-            set
-            {
-                if (_currentTheme == value)
-                    return;
-
-                if (_currentTheme != null)
-                    Application.Current.Resources.MergedDictionaries.Remove(_currentTheme);
-
-                _currentTheme = value;
-
-                if (_currentTheme != null)
-                    Application.Current.Resources.MergedDictionaries.Add(_currentTheme);
-
-                if (CurrentThemeChanged != null)
-                    CurrentThemeChanged(this, EventArgs.Empty);
-            }
-        }
-
-		[Import]
-		private IMenu _mainMenu;
-		public IMenu MainMenu
-		{
-			get { return _mainMenu; }
-		}
+        [Import]
+        private IMenu _mainMenu;
 
         [Import]
         private IToolBars _toolBars;
+
+        [Import]
+        private IStatusBar _statusBar;
+
+        [Import]
+        private ILayoutItemStatePersister _layoutItemStatePersister;
+#pragma warning restore 649
+
+        private IShellView _shellView;
+	    private bool _closing;
+
+        public IMenu MainMenu
+        {
+            get { return _mainMenu; }
+        }
+
         public IToolBars ToolBars
         {
             get { return _toolBars; }
         }
 
-		[Import]
-		private IStatusBar _statusBar;
 		public IStatusBar StatusBar
 		{
 			get { return _statusBar; }
 		}
 
-	    private ILayoutItem _currentActiveItem;
-	    public ILayoutItem CurrentActiveItem
+	    private ILayoutItem _activeLayoutItem;
+	    public ILayoutItem ActiveLayoutItem
 	    {
-	        get { return _currentActiveItem; }
+	        get { return _activeLayoutItem; }
 	        set
 	        {
-	            _currentActiveItem = value;
-                if (value is IDocument)
-                    ActivateItem((IDocument) value);
-                NotifyOfPropertyChange(() => CurrentActiveItem);
+	            if (ReferenceEquals(_activeLayoutItem, value))
+	                return;
+
+	            _activeLayoutItem = value;
+
+	            if (value is IDocument)
+	                ActivateItem((IDocument) value);
+
+	            NotifyOfPropertyChange(() => ActiveLayoutItem);
 	        }
 	    }
 
-		private readonly BindableCollection<ITool> _tools;
-		public IObservableCollection<ITool> Tools
-		{
-			get { return _tools; }
-		}
+        private readonly BindableCollection<ITool> _tools;
+        public IObservableCollection<ITool> Tools
+        {
+            get { return _tools; }
+        }
 
-		public IObservableCollection<IDocument> Documents
-		{
-			get { return Items; }
-		}
+        public IObservableCollection<IDocument> Documents
+        {
+            get { return Items; }
+        }
 
-        public const string StateFile = @".\ApplicationState.bin";
+        private bool _showFloatingWindowsInTaskbar;
+        public bool ShowFloatingWindowsInTaskbar
+        {
+            get { return _showFloatingWindowsInTaskbar; }
+            set
+            {
+                _showFloatingWindowsInTaskbar = value;
+                NotifyOfPropertyChange(() => ShowFloatingWindowsInTaskbar);
+                if (_shellView != null)
+                    _shellView.UpdateFloatingWindows();
+            }
+        }
 
-        public static bool HasPersistedState
+	    public virtual string StateFile
+	    {
+	        get { return @".\ApplicationState.bin"; }
+	    }
+
+        public bool HasPersistedState
         {
             get { return File.Exists(StateFile); }
         }
 
-		public ShellViewModel()
-		{
-		    ((IActivate) this).Activate();
-
-			_tools = new BindableCollection<ITool>();
-
-		    if (!HasPersistedState)
-		    {
-		        // This workaround is necessary until https://avalondock.codeplex.com/workitem/15577
-		        // is applied, or the bug is fixed in another way.
-		        _tools.Add(new DummyTool(PaneLocation.Left));
-		        _tools.Add(new DummyTool(PaneLocation.Right));
-		        _tools.Add(new DummyTool(PaneLocation.Bottom));
-		    }
-		}
-
-        [Export(typeof(DummyTool))]
-        private class DummyTool : Tool
+        public ShellViewModel()
         {
-            private readonly PaneLocation _preferredLocation;
+            ((IActivate)this).Activate();
 
-            public override PaneLocation PreferredLocation
-            {
-                get { return _preferredLocation; }
-            }
-
-            public DummyTool(PaneLocation preferredLocation)
-            {
-                _preferredLocation = preferredLocation;
-                IsVisible = false;
-            }
-
-            private DummyTool() {}
+            _tools = new BindableCollection<ITool>();
         }
 
 	    protected override void OnViewLoaded(object view)
 	    {
+            foreach (var module in _modules)
+                foreach (var globalResourceDictionary in module.GlobalResourceDictionaries)
+                    Application.Current.Resources.MergedDictionaries.Add(globalResourceDictionary);
+
 	        foreach (var module in _modules)
 	            module.PreInitialize();
 	        foreach (var module in _modules)
 	            module.Initialize();
 
 	        // If after initialization no theme was loaded, load the default one
-	        if (_currentTheme == null)
-	            CurrentTheme = new ResourceDictionary
-	            {
-	                Source = new Uri("/Gemini;component/Themes/VS2010/Theme.xaml", UriKind.Relative)
-	            };
+	        if (_themeManager.CurrentTheme == null)
+	            _themeManager.SetCurrentTheme(Properties.Settings.Default.ThemeName);
 
-	        var shellView = (IShellView) view;
-	        if (!HasPersistedState)
-	        {
-	            foreach (var defaultDocument in _modules.SelectMany(x => x.DefaultDocuments))
-	                OpenDocument(defaultDocument);
-	            foreach (var defaultTool in _modules.SelectMany(x => x.DefaultTools))
-	                ShowTool((ITool) IoC.GetInstance(defaultTool, null));
-	        }
-	        else
-	        {
-	            LoadState(StateFile, shellView);
-	        }
+            _shellView = (IShellView)view;
+            if (!HasPersistedState)
+            {
+                foreach (var defaultDocument in _modules.SelectMany(x => x.DefaultDocuments))
+                    OpenDocument(defaultDocument);
+                foreach (var defaultTool in _modules.SelectMany(x => x.DefaultTools))
+                    ShowTool((ITool)IoC.GetInstance(defaultTool, null));
+            }
+            else
+            {
+                _layoutItemStatePersister.LoadState(this, _shellView, StateFile);
+            }
 
-	        foreach (var module in _modules)
-	            module.PostInitialize();
+            foreach (var module in _modules)
+                module.PostInitialize();
 
-	        base.OnViewLoaded(view);
+            base.OnViewLoaded(view);
+        }
+
+	    public void ShowTool<TTool>()
+            where TTool : ITool
+	    {
+	        ShowTool(IoC.Get<TTool>());
 	    }
 
 	    public void ShowTool(ITool model)
@@ -175,7 +166,7 @@ namespace Gemini.Modules.Shell.ViewModels
 		    else
 		        Tools.Add(model);
 		    model.IsSelected = true;
-	        CurrentActiveItem = model;
+	        ActiveLayoutItem = model;
 		}
 
 		public void OpenDocument(IDocument model)
@@ -193,26 +184,48 @@ namespace Gemini.Modules.Shell.ViewModels
             if (_closing)
                 return;
 
+            RaiseActiveDocumentChanging();
+
+            var currentActiveItem = ActiveItem;
+
+            base.ActivateItem(item);
+
+            if (!ReferenceEquals(item, currentActiveItem))
+                RaiseActiveDocumentChanged();
+        }
+
+	    private void RaiseActiveDocumentChanging()
+	    {
             var handler = ActiveDocumentChanging;
             if (handler != null)
                 handler(this, EventArgs.Empty);
+	    }
 
-            base.ActivateItem(item);
-        }
-
-        protected override void OnActivationProcessed(IDocument item, bool success)
-        {
+	    private void RaiseActiveDocumentChanged()
+	    {
             var handler = ActiveDocumentChanged;
             if (handler != null)
                 handler(this, EventArgs.Empty);
+	    }
 
-            if (CurrentActiveItem != item)
-                CurrentActiveItem = item;
+        protected override void OnActivationProcessed(IDocument item, bool success)
+        {
+            if (!ReferenceEquals(ActiveLayoutItem, item))
+                ActiveLayoutItem = item;
 
             base.OnActivationProcessed(item, success);
         }
 
-        protected override void OnDeactivate(bool close)
+	    public override void DeactivateItem(IDocument item, bool close)
+	    {
+	        RaiseActiveDocumentChanging();
+
+	        base.DeactivateItem(item, close);
+
+            RaiseActiveDocumentChanged();
+	    }
+
+	    protected override void OnDeactivate(bool close)
         {
             // Workaround for a complex bug that occurs when
             // (a) the window has multiple documents open, and
@@ -238,182 +251,14 @@ namespace Gemini.Modules.Shell.ViewModels
             // requests that occur when _closing is true.
             _closing = true;
 
-            SaveState(StateFile);
+            _layoutItemStatePersister.SaveState(this, _shellView, StateFile);
 
             base.OnDeactivate(close);
         }
 
-		public void Close()
-		{
-			Application.Current.MainWindow.Close();
-		}
-
-	    private void SaveState(string fileName)
-	    {
-	        FileStream stream = null;
-
-	        try
-	        {
-	            stream = new FileStream(fileName, FileMode.Create, FileAccess.Write);
-
-	            using (var writer = new BinaryWriter(stream))
-	            {
-	                stream = null;
-
-	                IEnumerable<ILayoutItem> itemStates = Documents.Concat(Tools.Cast<ILayoutItem>());
-
-	                int itemCount = 0;
-	                // reserve some space for items count, it'll be updated later
-	                writer.Write(itemCount);
-
-	                foreach (ILayoutItem item in itemStates)
-	                {
-	                    if (!item.ShouldReopenOnStart)
-	                    {
-	                        continue;
-	                    }
-
-	                    ExportAttribute exportAttribute =
-	                        item.GetType()
-	                            .GetCustomAttributes(typeof (ExportAttribute), false)
-	                            .Cast<ExportAttribute>()
-	                            .FirstOrDefault();
-
-	                    string typeName = null;
-
-	                    if (exportAttribute != null && exportAttribute.ContractType != null)
-	                    {
-	                        typeName = exportAttribute.ContractType.AssemblyQualifiedName;
-	                    }
-
-	                    if (string.IsNullOrEmpty(typeName))
-	                    {
-	                        continue;
-	                    }
-
-	                    writer.Write(typeName);
-	                    writer.Write(item.ContentId);
-
-	                    // Here's the tricky part. Because some items might fail to save their state, or they might be removed (a plug-in assembly deleted and etc.)
-	                    // we need to save the item's state size to be able to skip the data during deserialization.
-	                    // Save surrent stream position. We'll need it later.
-	                    long stateSizePosition = writer.BaseStream.Position;
-
-	                    // Reserve some space for item state size
-	                    writer.Write(0L);
-
-	                    long stateSize;
-
-	                    try
-	                    {
-	                        long stateStartPosition = writer.BaseStream.Position;
-	                        item.SaveState(writer);
-	                        stateSize = writer.BaseStream.Position - stateStartPosition;
-	                    }
-	                    catch
-	                    {
-	                        stateSize = 0;
-	                    }
-
-	                    // Go back to the position before item's state and write the actual value.
-	                    writer.BaseStream.Seek(stateSizePosition, SeekOrigin.Begin);
-	                    writer.Write(stateSize);
-
-	                    if (stateSize > 0)
-	                    {
-	                        // Got to the end of the stream
-	                        writer.BaseStream.Seek(0, SeekOrigin.End);
-	                    }
-
-	                    itemCount++;
-	                }
-
-	                writer.BaseStream.Seek(0, SeekOrigin.Begin);
-	                writer.Write(itemCount);
-                    writer.BaseStream.Seek(0, SeekOrigin.End);
-
-                    var shellView = Views.Values.Single() as IShellView;
-                    if (shellView != null)
-                        shellView.SaveLayout(writer.BaseStream);
-	            }
-	        }
-	        catch
-	        {
-	            if (stream != null)
-	            {
-	                stream.Close();
-	            }
-	        }
-	    }
-
-        private void LoadState(string fileName, IShellView shellView)
+        public void Close()
         {
-            var layoutItems = new Dictionary<string, ILayoutItem>();
-
-            if (!File.Exists(fileName))
-            {
-                return;
-            }
-
-            FileStream stream = null;
-
-            try
-            {
-                stream = new FileStream(fileName, FileMode.Open, FileAccess.Read);
-
-                using (var reader = new BinaryReader(stream))
-                {
-                    stream = null;
-
-                    int count = reader.ReadInt32();
-
-                    for (int i = 0; i < count; i++)
-                    {
-                        string typeName = reader.ReadString();
-                        string contentId = reader.ReadString();
-                        long stateEndPosition = reader.ReadInt64();
-                        stateEndPosition += reader.BaseStream.Position;
-
-                        var contentType = Type.GetType(typeName);
-                        bool skipStateData = true;
-
-                        if (contentType != null)
-                        {
-                            var contentInstance = IoC.GetInstance(contentType, null) as ILayoutItem;
-
-                            if (contentInstance != null)
-                            {
-                                layoutItems.Add(contentId, contentInstance);
-
-                                try
-                                {
-                                    contentInstance.LoadState(reader);
-                                    skipStateData = false;
-                                }
-                                catch
-                                {
-                                    skipStateData = true;
-                                }
-                            }
-                        }
-
-                        // Skip state data block if we couldn't read it.
-                        if (skipStateData)
-                        {
-                            reader.BaseStream.Seek(stateEndPosition, SeekOrigin.Begin);
-                        }
-                    }
-
-                    shellView.LoadLayout(reader.BaseStream, ShowTool, OpenDocument, layoutItems);
-                }
-            }
-            catch
-            {
-                if (stream != null)
-                {
-                    stream.Close();
-                }
-            }
+            Application.Current.MainWindow.Close();
         }
 	}
 }

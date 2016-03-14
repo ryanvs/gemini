@@ -19,12 +19,7 @@ namespace Gemini.Modules.MainMenu.Models
 
 		public IObservableCollection<MenuItemBase> Children { get; private set; }
 
-		public virtual string Name
-		{
-			get { return "-"; }
-		}
-
-		#endregion
+	    #endregion
 
 		#region Constructors
 

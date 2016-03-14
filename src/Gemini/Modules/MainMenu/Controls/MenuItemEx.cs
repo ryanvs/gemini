@@ -1,10 +1,11 @@
 ﻿using System.Windows;
 using System.Windows.Controls;
+using Gemini.Framework.Controls;
 using Gemini.Modules.MainMenu.Models;
 
 namespace Gemini.Modules.MainMenu.Controls
 {
-	public class MenuItemEx : System.Windows.Controls.MenuItem
+    public class MenuItemEx : System.Windows.Controls.MenuItem
 	{
 		private object _currentItem;
 
@@ -21,11 +22,15 @@ namespace Gemini.Modules.MainMenu.Controls
 
 		internal static DependencyObject GetContainer(FrameworkElement frameworkElement, object item)
 		{
-			if (item is MenuItemSeparator)
-				return new Separator { Style = (Style)frameworkElement.FindResource(SeparatorStyleKey) };
+		    if (item is MenuItemSeparator)
+		        return new Separator();
 
-			string styleKey = (item is CheckableMenuItem) ? "CheckableMenuItem" : "MenuItem";
-			return new MenuItemEx { Style = (Style)frameworkElement.FindResource(styleKey) };
+		    const string styleKey = "MenuItem";
+
+		    var result = new MenuItemEx();
+            result.SetResourceReference(DynamicStyle.BaseStyleProperty, typeof(MenuItem));
+		    result.SetResourceReference(DynamicStyle.DerivedStyleProperty, styleKey);
+		    return result;
 		}
 	}
 }

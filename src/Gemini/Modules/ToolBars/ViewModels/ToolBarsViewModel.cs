@@ -14,6 +14,8 @@ namespace Gemini.Modules.ToolBars.ViewModels
             get { return _items; }
         }
 
+        private readonly IToolBarBuilder _toolBarBuilder;
+
         private bool _visible;
         public bool Visible
         {
@@ -21,28 +23,27 @@ namespace Gemini.Modules.ToolBars.ViewModels
             set
             {
                 _visible = value;
-                NotifyOfPropertyChange("Visible");
+                NotifyOfPropertyChange();
             }
         }
 
-        public ToolBarsViewModel()
+        [ImportingConstructor]
+        public ToolBarsViewModel(IToolBarBuilder toolBarBuilder)
         {
+            _toolBarBuilder = toolBarBuilder;
             _items = new BindableCollection<IToolBar>();
-        }
-
-        public void Add(params IToolBar[] items)
-        {
-            items.Apply(Items.Add);
         }
 
         protected override void OnViewLoaded(object view)
         {
+            _toolBarBuilder.BuildToolBars(this);
+
             // TODO: Ideally, the ToolBarTray control would expose ToolBars
             // as a dependency property. We could use an attached property
             // to workaround this. But for now, toolbars need to be
             // created prior to the following code being run.
             foreach (var toolBar in Items)
-                ((IToolBarsView) view).ToolBarTray.ToolBars.Add(new ToolBarEx
+                ((IToolBarsView) view).ToolBarTray.ToolBars.Add(new MainToolBar
                 {
                     ItemsSource = toolBar
                 });

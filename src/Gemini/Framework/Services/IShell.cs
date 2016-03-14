@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Windows;
 using Caliburn.Micro;
 using Gemini.Modules.MainMenu;
 using Gemini.Modules.StatusBar;
@@ -12,19 +11,22 @@ namespace Gemini.Framework.Services
         event EventHandler ActiveDocumentChanging;
         event EventHandler ActiveDocumentChanged;
 
-	    event EventHandler CurrentThemeChanged;
-
-        ResourceDictionary CurrentTheme { get; set; }
-
+        bool ShowFloatingWindowsInTaskbar { get; set; }
+        
 		IMenu MainMenu { get; }
         IToolBars ToolBars { get; }
 		IStatusBar StatusBar { get; }
 
+        // TODO: Rename this to ActiveItem.
+        ILayoutItem ActiveLayoutItem { get; set; }
+
+        // TODO: Rename this to SelectedDocument.
 		IDocument ActiveItem { get; }
 
 		IObservableCollection<IDocument> Documents { get; }
 		IObservableCollection<ITool> Tools { get; }
 
+        void ShowTool<TTool>() where TTool : ITool;
 		void ShowTool(ITool model);
 
 		void OpenDocument(IDocument model);

@@ -10,10 +10,12 @@ namespace Gemini.Framework.Results
 	{
 		private readonly Func<TTool> _toolLocator = () => IoC.Get<TTool>();
 
-		[Import]
+#pragma warning disable 649
+        [Import]
 		private IShell _shell;
+#pragma warning restore 649
 
-		public ShowToolResult()
+        public ShowToolResult()
 		{
 			
 		}
@@ -23,7 +25,7 @@ namespace Gemini.Framework.Results
 			_toolLocator = () => tool;
 		}
 
-		public override void Execute(ActionExecutionContext context)
+		public override void Execute(CoroutineExecutionContext context)
 		{
 			var tool = _toolLocator();
 

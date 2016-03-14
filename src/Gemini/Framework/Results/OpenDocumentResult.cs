@@ -1,8 +1,8 @@
 ﻿using System;
 using System.ComponentModel.Composition;
-using System.Linq;
 using Caliburn.Micro;
 using Gemini.Framework.Services;
+using Gemini.Modules.Shell.Commands;
 
 namespace Gemini.Framework.Results
 {
@@ -12,10 +12,12 @@ namespace Gemini.Framework.Results
 		private readonly Type _editorType;
 		private readonly string _path;
 
-		[Import]
+#pragma warning disable 649
+        [Import]
 		private IShell _shell;
+#pragma warning restore 649
 
-		public OpenDocumentResult(IDocument editor)
+        public OpenDocumentResult(IDocument editor)
 		{
 			_editor = editor;
 		}
@@ -30,12 +32,12 @@ namespace Gemini.Framework.Results
 			_editorType = editorType;
 		}
 
-		public override void Execute(ActionExecutionContext context)
+		public override void Execute(CoroutineExecutionContext context)
 		{
 			var editor = _editor ??
 				(string.IsNullOrEmpty(_path)
 					? (IDocument)IoC.GetInstance(_editorType, null)
-					: GetEditor(_path));
+					:  GetEditor(_path));
 
 			if (editor == null)
 			{
@@ -65,11 +67,7 @@ namespace Gemini.Framework.Results
 
 		private static IDocument GetEditor(string path)
 		{
-			return IoC.GetAllInstances(typeof(IEditorProvider))
-				.Cast<IEditorProvider>()
-				.Where(provider => provider.Handles(path))
-				.Select(provider => provider.Create(path))
-				.FirstOrDefault();
+		    return OpenFileCommandHandler.GetEditor(path).Result;
 		}
 	}
 }

@@ -1,8 +1,8 @@
-﻿using System;
-using System.ComponentModel.Composition;
+﻿using System.ComponentModel.Composition;
 using System.Windows;
 using System.Windows.Media;
 using Caliburn.Micro;
+using Gemini.Framework.Commands;
 using Gemini.Framework.Services;
 
 namespace Gemini.Modules.MainWindow.ViewModels
@@ -10,6 +10,17 @@ namespace Gemini.Modules.MainWindow.ViewModels
     [Export(typeof(IMainWindow))]
     public class MainWindowViewModel : Conductor<IShell>, IMainWindow, IPartImportsSatisfiedNotification
     {
+#pragma warning disable 649
+        [Import]
+        private IShell _shell;
+
+        [Import]
+        private IResourceManager _resourceManager;
+
+        [Import]
+        private ICommandKeyGestureService _commandKeyGestureService;
+#pragma warning restore 649
+
         private WindowState _windowState = WindowState.Normal;
         public WindowState WindowState
         {
@@ -65,8 +76,6 @@ namespace Gemini.Modules.MainWindow.ViewModels
             }
         }
 
-        [Import]
-        private IShell _shell;
         public IShell Shell
         {
             get { return _shell; }
@@ -74,7 +83,15 @@ namespace Gemini.Modules.MainWindow.ViewModels
 
         void IPartImportsSatisfiedNotification.OnImportsSatisfied()
         {
+            if (_icon == null)
+                _icon = _resourceManager.GetBitmap("Resources/Icons/Gemini-32.png");
             ActivateItem(_shell);
+        }
+
+        protected override void OnViewLoaded(object view)
+        {
+            _commandKeyGestureService.BindKeyGestures((UIElement) view);
+            base.OnViewLoaded(view);
         }
     }
 }
